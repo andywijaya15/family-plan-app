@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import '../widgets/app_bar.dart'; // 👈 import custom AppBar
 
 class CategoryScreen extends StatefulWidget {
   const CategoryScreen({super.key});
@@ -11,7 +12,7 @@ class CategoryScreen extends StatefulWidget {
 }
 
 class _CategoryScreenState extends State<CategoryScreen> {
-  final String apiUrl = 'http://localhost:8080/api/categories'; // GANTI IP LAN kamu
+  final String apiUrl = 'http://localhost:8080/api/categories';
   List categories = [];
   bool isLoading = true;
   final nameController = TextEditingController();
@@ -40,7 +41,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
         headers: {'Authorization': 'Bearer $token'},
       );
 
-      if (!mounted) return; // ✅ pastikan widget masih aktif
+      if (!mounted) return;
 
       if (response.statusCode == 200) {
         setState(() {
@@ -60,67 +61,6 @@ class _CategoryScreenState extends State<CategoryScreen> {
     }
   }
 
-  Future<void> addCategory() async {
-    final name = nameController.text.trim();
-    if (name.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nama kategori tidak boleh kosong')),
-      );
-      return;
-    }
-
-    try {
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'name': name}),
-      );
-
-      if (!mounted) return;
-
-      if (response.statusCode == 201) {
-        Navigator.pop(context);
-        nameController.clear();
-        fetchCategories();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal menambah kategori: ${response.body}')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Error: $e')));
-    }
-  }
-
-  Future<void> deleteCategory(int id) async {
-    try {
-      final response = await http.delete(
-        Uri.parse('$apiUrl/$id'),
-        headers: {'Authorization': 'Bearer $token'},
-      );
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200) {
-        fetchCategories();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Gagal menghapus kategori')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Error: $e')));
-    }
-  }
-
   void showAddDialog() {
     showDialog(
       context: context,
@@ -137,7 +77,10 @@ class _CategoryScreenState extends State<CategoryScreen> {
             child: const Text('Batal'),
           ),
           ElevatedButton(
-            onPressed: addCategory,
+            onPressed: () {
+              Navigator.pop(context);
+              addCategory();
+            },
             child: const Text('Simpan'),
           ),
         ],
@@ -145,36 +88,101 @@ class _CategoryScreenState extends State<CategoryScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Kategori'),
+  Future<void> addCategory() async {
+    final name = nameController.text.trim();
+    if (name.isEmpty) return;
+
+    try {
+      final response = await http.post(
+        Uri.parse(apiUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'name': name}),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 201) {
+        nameController.clear();
+        fetchCategories();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal menambah kategori: ${response.body}')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
+  Future<void> confirmDeleteCategory(int id, String name) async {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Konfirmasi Hapus'),
+        content: Text('Hapus kategori "$name"?'),
         actions: [
-          IconButton(
-            onPressed: showAddDialog,
-            icon: const Icon(Icons.add),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              deleteCategory(id);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text('Hapus'),
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> deleteCategory(int id) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$apiUrl/$id'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 200) fetchCategories();
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: const MainAppBar(title: 'Kategori'), // ✅ pakai appbar global
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: fetchCategories,
-              child: ListView.builder(
-                itemCount: categories.length,
-                itemBuilder: (context, index) {
-                  final cat = categories[index];
-                  return ListTile(
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+              itemCount: categories.length,
+              itemBuilder: (context, index) {
+                final cat = categories[index];
+                return Card(
+                  color: Colors.grey[850],
+                  child: ListTile(
                     title: Text(cat['name']),
                     trailing: IconButton(
                       icon: const Icon(Icons.delete, color: Colors.redAccent),
-                      onPressed: () => deleteCategory(cat['id']),
+                      onPressed: () =>
+                          confirmDeleteCategory(cat['id'], cat['name']),
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: showAddDialog,
+        icon: const Icon(Icons.add),
+        label: const Text('Tambah'),
+      ),
     );
   }
 }
